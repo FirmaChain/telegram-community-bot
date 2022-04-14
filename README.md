@@ -22,6 +22,7 @@ Change the group type to 'public' after creating the group.
 
 ### 3. Invite bots & Change bots permissions
 ![firmachain official bot admin](https://user-images.githubusercontent.com/93503020/163318929-4e36ea22-9ecf-4f8d-a4ed-466507985689.png)
+
 <p>
 Invite the 'bot' to the group to add it as an administrator and change the permissions as shown above.
 </p>
