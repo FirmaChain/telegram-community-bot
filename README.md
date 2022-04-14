@@ -1,6 +1,8 @@
 # FirmaChain Official Telegram Group Bot
 ![firmachain official bot](https://user-images.githubusercontent.com/93503020/163318773-268e9605-5e9f-4004-b2fa-0a3c05b7545c.png)
+<p>
 The telegram-community-bot manages users who join 'FirmaChain Global Official' Telegram group.
+</p>
 
 # Telegram Setting
 ### 1. Create bot
