@@ -8,10 +8,12 @@ The telegram-community-bot manages users who join 'FirmaChain Global Official' T
 
 ### 1. Create bot
 ![create_new_bot](https://user-images.githubusercontent.com/93503020/163318906-4ff53d84-d915-47ca-8175-46cf06993a13.png)
+
 <p>
 Start a chat with @BotFather and create a bot.
 Please enter in the order below.
 </p>
+
 ```
 1. /newbot
 2. Bot name that ends with 'bot'. (Check)
