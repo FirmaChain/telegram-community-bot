@@ -20,8 +20,6 @@ export class MessageHistoryComponent {
       const messageInfo = jsonParseData[chatId];
       this.messages.set(chatId, messageInfo);
     }
-
-    this.popMessagesExcludeLastIndex(-1001554033834, 'notice');
   }
   
   addMessage(chatId: number, type: string, messageId: number, date: number) {

@@ -1,7 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import TelegramBot from 'node-telegram-bot-api';
 import { join } from 'path';
-import { getAlert } from 'src/components/localeConfig.component';
 import { MessageHistoryComponent } from 'src/components/messageHistory.component';
 import { NewChatMemberComponent } from 'src/components/newChatMember.component';
 import { getNoticeDataByLocale, getPermissionDataByLocale, getAlertMessageByLocale, getNewChatMemberRestrictOption, getNotYoursAlertMessageByLocale, getAlreadyAlertMessageByLocale, getNotJoinMessageByLocale } from 'src/constants/constants';
@@ -14,7 +13,7 @@ export class TelebotService implements OnModuleInit {
   telegramBot: TelegramBot;
   messageHistoryComponent: MessageHistoryComponent;
   newChatMemberComponent: NewChatMemberComponent;
-
+  
   onModuleInit() {
     this.init();
     this.onTelegramMessage();
@@ -53,7 +52,7 @@ export class TelebotService implements OnModuleInit {
             const nowTime = Math.floor(new Date().getTime() / 1000);
 
             this.messageHistoryComponent.addMessage(chatId, 'permission', message.message_id, message.date);
-            this.newChatMemberComponent.addNewChatMember(newChatMember.id, nowTime);
+            this.newChatMemberComponent.addNewChatMember(chatId, newChatMember.id, nowTime);
           }
         }
       }
@@ -65,7 +64,7 @@ export class TelebotService implements OnModuleInit {
         const deleteMessage: boolean = await this.telegramBot.deleteMessage(chatId, msg.message_id.toString());
 
         if (deleteMessage) {
-          this.newChatMemberComponent.deleteNewChatMember(leftChatMember.id);
+          this.newChatMemberComponent.deleteNewChatMember(chatId, leftChatMember.id);
         }
       }
     });
@@ -87,12 +86,12 @@ export class TelebotService implements OnModuleInit {
           const targetUser: TelegramBot.ChatMember = await this.telegramBot.getChatMember(chatId, chatInfo.id.toString());
           const canSendMessage: boolean = targetUser.can_send_messages;
     
-          const newMemberEnterTime: number = this.newChatMemberComponent.getUserDate(query.from.id);
+          const newMemberEnterTime: number = this.newChatMemberComponent.getUserDate(chatId, query.from.id);
           const nowTime = Math.floor(new Date().getTime() / 1000);
           const timeLimit: number = (60 * 3);
           const canEnterGroup = (nowTime - newMemberEnterTime) < timeLimit ? true : false;
     
-          if (!this.newChatMemberComponent.hasUser(query.from.id)) {
+          if (!this.newChatMemberComponent.hasUser(chatId, query.from.id)) {
             // Not join user
             this.telegramBot.answerCallbackQuery(query.id, {
               text: getNotJoinMessageByLocale(query.from.language_code),
@@ -122,7 +121,7 @@ export class TelebotService implements OnModuleInit {
                 console.log('[WARN] Message is not found');
               }
     
-              this.newChatMemberComponent.deleteNewChatMember(query.from.id);
+              this.newChatMemberComponent.deleteNewChatMember(chatId, query.from.id);
               await this.telegramBot.deleteMessage(chatId, messageId.toString());
               
               const welcomeInfo = getNoticeDataByLocale(query.from.language_code, query.from.first_name);
