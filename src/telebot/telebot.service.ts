@@ -125,7 +125,7 @@ export class TelebotService implements OnModuleInit {
               await this.telegramBot.deleteMessage(chatId, messageId.toString());
               
               const welcomeInfo = getNoticeDataByLocale(query.from.language_code, query.from.first_name);
-              const firmachainImgPath: string = join(__dirname, '../..', '/public/firmachain.png');
+              const firmachainImgPath: string = join(__dirname, '../../..', '/public/firmachain.png');
               const noticeMsg = await this.telegramBot.sendPhoto(chatId, firmachainImgPath, {
                 caption: welcomeInfo.message,
                 reply_markup: welcomeInfo.query.reply_markup,
