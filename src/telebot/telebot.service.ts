@@ -1,10 +1,12 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import TelegramBot from 'node-telegram-bot-api';
 import { join } from 'path';
+import { getAlert } from 'src/components/localeConfig.component';
 import { MessageHistoryComponent } from 'src/components/messageHistory.component';
 import { NewChatMemberComponent } from 'src/components/newChatMember.component';
-import { getNoticeDataByLocale, getPermissionDataByLocale, getAlertMessageByLocale, getNewChatMemberRestrictOption, getNotYoursAlertMessageByLocale, getAlreadyAlertMessageByLocale } from 'src/constants/constants';
-import { PermissionData } from 'src/dtos/permissionData.dto';
+import { getNoticeDataByLocale, getPermissionDataByLocale, getAlertMessageByLocale, getNewChatMemberRestrictOption, getNotYoursAlertMessageByLocale, getAlreadyAlertMessageByLocale, getNotJoinMessageByLocale } from 'src/constants/constants';
+import { TYPE } from 'src/defines/define';
+import { MessageInfo } from 'src/dtos/chatMessage.dto';
 
 @Injectable()
 export class TelebotService implements OnModuleInit {
@@ -19,21 +21,15 @@ export class TelebotService implements OnModuleInit {
     this.initScheduleForDeletePermissionMsg();
   }
 
-  private init() {
+  private async init() {
     this.token = process.env.TOKEN;
     this.telegramBot = new TelegramBot(this.token, { polling: true });
     this.messageHistoryComponent = new MessageHistoryComponent();
     this.newChatMemberComponent = new NewChatMemberComponent();
-    console.log(this.telegramBot.isPolling());
   }
 
   private onTelegramMessage() {
-    this.telegramBot.addListener('new_chat_members', (msg: TelegramBot.Message) => {
-      console.log(msg);
-    })
-    
     this.telegramBot.on('message', async (msg: TelegramBot.Message) => {
-      console.log(msg);
       if (msg.chat.type !== 'supergroup' || (msg.text !== undefined && msg.text !== null)) {
         return;
       }
@@ -53,16 +49,10 @@ export class TelebotService implements OnModuleInit {
             let replacePermissionQuery = JSON.parse(permissionQuery.replace("\\\\", ""));
             replacePermissionQuery.reply_markup.inline_keyboard[0][0].callback_data = `change_permission_${newChatMember.id}`;
 
-            const sendMsgResult = await this.telegramBot.sendMessage(chatId, newChatMemberSendMsgOption.message, replacePermissionQuery);
+            const message = await this.telegramBot.sendMessage(chatId, newChatMemberSendMsgOption.message, replacePermissionQuery);
             const nowTime = Math.floor(new Date().getTime() / 1000);
 
-            const permissionData: PermissionData = {
-              chatId: sendMsgResult.chat.id,
-              message_id: sendMsgResult.message_id,
-              date: sendMsgResult.date
-            };
-
-            this.messageHistoryComponent.addMessageIdWithType('permission', permissionData);
+            this.messageHistoryComponent.addMessage(chatId, 'permission', message.message_id, message.date);
             this.newChatMemberComponent.addNewChatMember(newChatMember.id, nowTime);
           }
         }
@@ -102,12 +92,20 @@ export class TelebotService implements OnModuleInit {
           const timeLimit: number = (60 * 3);
           const canEnterGroup = (nowTime - newMemberEnterTime) < timeLimit ? true : false;
     
-          if (canSendMessage === undefined || canSendMessage === null || canEnterGroup === false) {
+          if (!this.newChatMemberComponent.hasUser(query.from.id)) {
+            // Not join user
+            this.telegramBot.answerCallbackQuery(query.id, {
+              text: getNotJoinMessageByLocale(query.from.language_code),
+              show_alert: true
+            });
+          } else if (canSendMessage === undefined || canSendMessage === null || canEnterGroup === false) {
+            // permission lock user
             this.telegramBot.answerCallbackQuery(query.id, {
               text: getAlertMessageByLocale(query.from.language_code),
               show_alert: true
             });
           } else if (canSendMessage) {
+            // permission unclock user
             this.telegramBot.answerCallbackQuery(query.id, {
               text: getAlreadyAlertMessageByLocale(query.from.language_code),
               show_alert: true
@@ -134,14 +132,13 @@ export class TelebotService implements OnModuleInit {
                 reply_markup: welcomeInfo.query.reply_markup,
                 parse_mode: 'Markdown'
               });
-    
-              this.messageHistoryComponent.addMessageIdWithType('notice', noticeMsg.message_id);
-    
-              if (this.messageHistoryComponent.getMessageLengthByType('notice') >= 2) {
-                const messageList: Array<number> = this.messageHistoryComponent.getMessageIdListExcludingLastArray('notice');
-                
+
+              this.messageHistoryComponent.addMessage(chatId, TYPE.NOTICE, noticeMsg.message_id, noticeMsg.date);
+              
+              if (this.messageHistoryComponent.getMessageLength(chatId.toString(), TYPE.NOTICE) >= 2) {
+                const messageList: Array<MessageInfo> = this.messageHistoryComponent.popMessagesExcludeLastIndex(chatId, TYPE.NOTICE);
                 messageList.forEach(async elem => {
-                  await this.telegramBot.deleteMessage(chatId, elem.toString());
+                  await this.telegramBot.deleteMessage(chatId, elem.messageId.toString());
                 });
               }
             }
@@ -154,21 +151,13 @@ export class TelebotService implements OnModuleInit {
 
   private initScheduleForDeletePermissionMsg() {
     setInterval(() => {
-      if (this.messageHistoryComponent.getMessageLengthByType('permission') === 0) {
-        console.log("[PERMISSION SCHEDULE] Have not change permission message");
-        return;
-      }
+      const messages = this.messageHistoryComponent.getRemoveTimeOutPermissionMsg();
 
-      try {
-        const permissionMsgList = this.messageHistoryComponent.getRemoveTimeOutPermissionMsg();
-
-        permissionMsgList.forEach(async elem => {
-          await this.telegramBot.deleteMessage(elem.chatId, elem.message_id.toString());
+      messages.forEach((value, key) => {
+        value.forEach(async elem => {
+          await this.telegramBot.deleteMessage(parseInt(key), elem.messageId.toString());
         });
-      } catch (e) {
-        console.log('catch : ', e);
-        throw e;
-      }
+      });
     }, 10000);
   }
 }

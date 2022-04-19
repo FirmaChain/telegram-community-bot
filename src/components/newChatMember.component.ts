@@ -60,6 +60,19 @@ export class NewChatMemberComponent {
     return retIndex;
   }
 
+  hasUser(userId: number) {
+    let check: boolean = false;
+
+    this.newChatMemberList.forEach(elem => {
+      if (elem.userId === userId) {
+        check = true;
+        return ;
+      }
+    });
+
+    return check;
+  }
+
   private saveDataAtJsonFile() {
     fs.writeFileSync(this.filePath, JSON.stringify(this.newChatMemberList));
   }

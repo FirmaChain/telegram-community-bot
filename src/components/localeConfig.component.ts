@@ -1,22 +1,26 @@
 import { LocaleConfig } from 'src/dtos/localConfig.dto';
-import localConfig from '../../config/locale.config.json';
+import localeConfig from '../../config/locale.config.json';
 
 export function getNotice(locale: string): LocaleConfig {
-  return localConfig[locale].notice;
+  return localeConfig[locale].notice;
 }
 
 export function getPermission(locale: string): LocaleConfig {
-  return localConfig[locale].permission;
+  return localeConfig[locale].permission;
 }
 
 export function getAlert(locale: string): LocaleConfig {
-  return localConfig[locale].alert;
+  return localeConfig[locale].alert;
 }
 
 export function getAlertUserCheck(locale: string): LocaleConfig {
-  return localConfig[locale].alertUserCheck;
+  return localeConfig[locale].alertUserCheck;
 }
 
 export function getAlertAlreadyUser(locale: string): LocaleConfig {
-  return localConfig[locale].alertAlready;
+  return localeConfig[locale].alertAlready;
+}
+
+export function getAlertNotJoinUser(locale: string): LocaleConfig {
+  return localeConfig[locale].alertNotJoin;
 }
