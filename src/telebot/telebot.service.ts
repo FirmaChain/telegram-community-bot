@@ -1,19 +1,27 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import TelegramBot from 'node-telegram-bot-api';
+
 import { join } from 'path';
-import { MessageHistoryComponent } from 'src/components/messageHistory.component';
-import { NewChatMemberComponent } from 'src/components/newChatMember.component';
-import { getNoticeDataByLocale, getPermissionDataByLocale, getAlertMessageByLocale, getNewChatMemberRestrictOption, getNotYoursAlertMessageByLocale, getAlreadyAlertMessageByLocale, getNotJoinMessageByLocale } from 'src/constants/constants';
-import { TYPE } from 'src/defines/define';
-import { MessageInfo } from 'src/dtos/chatMessage.dto';
+import { getAlertMessage, getNewChatMemberRestrictOption, getNoticeData, getRestrictData } from 'src/constants/constants';
+import { ALERT_ALREADY, ALERT_NOT_JOIN, ALERT_USER_CHECK } from 'src/defines/define';
+import { Message } from 'src/dtos/message.dto';
+import { NoticeMessageService } from 'src/messages/noticeMessages.service';
+import { RestrictMessageService } from 'src/messages/restrictMessages.service';
+import { UsersService } from 'src/users/users.service';
 
 @Injectable()
 export class TelebotService implements OnModuleInit {
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly restrictMessagesService: RestrictMessageService,
+    private readonly noticeMessagesService: NoticeMessageService
+  ) {}
+
   token: string;
+  startDate: number;
   telegramBot: TelegramBot;
-  messageHistoryComponent: MessageHistoryComponent;
-  newChatMemberComponent: NewChatMemberComponent;
-  
+  scheduling: NodeJS.Timer;
+
   onModuleInit() {
     this.init();
     this.onTelegramMessage();
@@ -22,125 +30,156 @@ export class TelebotService implements OnModuleInit {
 
   private async init() {
     this.token = process.env.TOKEN;
+    this.startDate = Math.floor(new Date().getTime() / 1000);
     this.telegramBot = new TelegramBot(this.token, { polling: true });
-    this.messageHistoryComponent = new MessageHistoryComponent();
-    this.newChatMemberComponent = new NewChatMemberComponent();
   }
 
   private onTelegramMessage() {
-    this.telegramBot.on('message', async (msg: TelegramBot.Message) => {
-      if (msg.chat.type !== 'supergroup' || (msg.text !== undefined && msg.text !== null)) {
-        return;
+    /* New Chat Member Listener */
+    this.telegramBot.addListener('new_chat_members', async (msg: TelegramBot.Message) => {
+      // Declare old message
+      if (this.startDate >= msg.date) {
+        console.log(`[NEWCHAT][BEFORE USER] Before message : ${msg.chat}`);
+        return ;
       }
 
       const newChatMember: TelegramBot.User = msg['new_chat_member'];
-
+      
+      // Join the new chat member in group
       if (newChatMember !== undefined && newChatMember !== null) {
         const chatId: number = msg.chat.id;
-        const deleteMessage: boolean = await this.telegramBot.deleteMessage(chatId, msg.message_id.toString());
+        const messageId: number = msg.message_id;
+        const userId: number = newChatMember.id;
+        const lagnuageCode: string = newChatMember.language_code;
+        const userName: string = newChatMember.first_name;
 
-        if (deleteMessage) {
-          const restrictChatMember: boolean = await this.telegramBot.restrictChatMember(chatId, newChatMember.id.toString(), getNewChatMemberRestrictOption());
+        // Delete join the group alert
+        await this.telegramBot.deleteMessage(chatId, messageId.toString());
+        
+        // Set restrict member
+        await this.telegramBot.restrictChatMember(chatId, userId.toString(), getNewChatMemberRestrictOption());
 
-          if (restrictChatMember) {
-            const newChatMemberSendMsgOption = getPermissionDataByLocale(newChatMember.language_code, newChatMember.first_name);
-            let permissionQuery = JSON.stringify(newChatMemberSendMsgOption.query);
-            let replacePermissionQuery = JSON.parse(permissionQuery.replace("\\\\", ""));
-            replacePermissionQuery.reply_markup.inline_keyboard[0][0].callback_data = `change_permission_${newChatMember.id}`;
+        // Make restrict message options
+        const restrictMsgOption = getRestrictData(lagnuageCode, userName);
+        const originRestrictQuery = JSON.stringify(restrictMsgOption.query);
+        const restrictQuery = JSON.parse(originRestrictQuery.replace("\\\\", ""));
+        restrictQuery.reply_markup.inline_keyboard[0][0].callback_data = `change_permission_${userId.toString()}`;
 
-            const message = await this.telegramBot.sendMessage(chatId, newChatMemberSendMsgOption.message, replacePermissionQuery);
-            const nowTime = Math.floor(new Date().getTime() / 1000);
+        // Send restrict message
+        const message = await this.telegramBot.sendMessage(chatId, restrictMsgOption.message, restrictQuery);
 
-            this.messageHistoryComponent.addMessage(chatId, 'permission', message.message_id, message.date);
-            this.newChatMemberComponent.addNewChatMember(chatId, newChatMember.id, nowTime);
-          }
-        }
+        // Save data
+        this.usersService.addUser(chatId, userId);
+        this.restrictMessagesService.addMessage(chatId, message.message_id);
+      };
+    });
+    
+    /* Left Chat Member Listener */
+    this.telegramBot.addListener('left_chat_member', async (msg: TelegramBot.Message) => {
+      // Declare old message
+      if (this.startDate >= msg.date) {
+        console.log(`[LEFTCHAT][BEFORE USER] Before message : ${msg.chat}`);
+        return ;
       }
-
-      const leftChatMember: TelegramBot.User = msg.left_chat_member;
-
-      if (leftChatMember !== undefined && newChatMember !== null) {
+      
+      const leftChatMember: TelegramBot.User = msg['left_chat_member'];
+      
+      if (leftChatMember !== undefined && leftChatMember !== null) {
         const chatId: number = msg.chat.id;
-        const deleteMessage: boolean = await this.telegramBot.deleteMessage(chatId, msg.message_id.toString());
+        const messageId: number = msg.message_id;
+        const userId: number = leftChatMember.id;
 
-        if (deleteMessage) {
-          this.newChatMemberComponent.deleteNewChatMember(chatId, leftChatMember.id);
-        }
+        // Delete left the group alert
+        await this.telegramBot.deleteMessage(chatId, messageId.toString());
+        this.usersService.removeUser(chatId, userId);
       }
     });
 
-    this.telegramBot.on('callback_query', async (query: TelegramBot.CallbackQuery) => {
-      const isChangePermission = query.data.includes('change_permission');
+    /* Callback Query Listener */
+    this.telegramBot.addListener('callback_query', async (query: TelegramBot.CallbackQuery) => {
+      const isChangeRestrict = query.data.includes('change_permission');
       
-      if (isChangePermission) {
-        const messageUserId = query.data.includes(query.from.id.toString());
-        
-        if (!messageUserId) {
-          this.telegramBot.answerCallbackQuery(query.id, {
-            text: getNotYoursAlertMessageByLocale(query.from.language_code),
+      // Click restric message
+      if (isChangeRestrict) {
+        const userId: number = query.from.id;
+        const chatId: number = query.message.chat.id;
+        const queryId: string = query.id;
+        const queryData: string = query.data;
+        const language_code: string = query.from.language_code;
+        const userName: string = query.from.first_name;
+        const userChatInfo: TelegramBot.ChatMember = await this.telegramBot.getChatMember(chatId, userId.toString());
+        const canSendMessage: boolean = userChatInfo.can_send_messages;
+        const messageId: number = query.message.message_id;
+
+        if (!queryData.includes(userId.toString())) {
+          // Other user
+          await this.telegramBot.answerCallbackQuery(queryId, {
+            text: getAlertMessage(ALERT_USER_CHECK, language_code),
             show_alert: true
           });
-        } else {
-          const chatId: number = query.message.chat.id;
-          const chatInfo: TelegramBot.Chat = await this.telegramBot.getChat(query.from.id);
-          const targetUser: TelegramBot.ChatMember = await this.telegramBot.getChatMember(chatId, chatInfo.id.toString());
-          const canSendMessage: boolean = targetUser.can_send_messages;
-    
-          const newMemberEnterTime: number = this.newChatMemberComponent.getUserDate(chatId, query.from.id);
-          const nowTime = Math.floor(new Date().getTime() / 1000);
-          const timeLimit: number = (60 * 3);
-          const canEnterGroup = (nowTime - newMemberEnterTime) < timeLimit ? true : false;
-    
-          if (!this.newChatMemberComponent.hasUser(chatId, query.from.id)) {
-            // Not join user
-            this.telegramBot.answerCallbackQuery(query.id, {
-              text: getNotJoinMessageByLocale(query.from.language_code),
-              show_alert: true
-            });
-          } else if (canSendMessage === undefined || canSendMessage === null || canEnterGroup === false) {
-            // permission lock user
-            this.telegramBot.answerCallbackQuery(query.id, {
-              text: getAlertMessageByLocale(query.from.language_code),
-              show_alert: true
-            });
-          } else if (canSendMessage) {
-            // permission unclock user
-            this.telegramBot.answerCallbackQuery(query.id, {
-              text: getAlreadyAlertMessageByLocale(query.from.language_code),
-              show_alert: true
-            });
-          } else if (!canSendMessage) {
-            const isChangePermission = await this.telegramBot.restrictChatMember(chatId, query.from.id.toString(), {
-              can_send_messages: true
-            });
-    
-            if (isChangePermission) {
-              const messageId: number = query.message.message_id;
-              
-              if (!this.messageHistoryComponent.removePermissionMessage(chatId, messageId)) {
-                console.log('[WARN] Message is not found');
-              }
-    
-              this.newChatMemberComponent.deleteNewChatMember(chatId, query.from.id);
-              await this.telegramBot.deleteMessage(chatId, messageId.toString());
-              
-              const welcomeInfo = getNoticeDataByLocale(query.from.language_code, query.from.first_name);
-              const firmachainImgPath: string = join(__dirname, '../../..', '/public/firmachain.png');
-              const noticeMsg = await this.telegramBot.sendPhoto(chatId, firmachainImgPath, {
-                caption: welcomeInfo.message,
-                reply_markup: welcomeInfo.query.reply_markup,
-                parse_mode: 'Markdown'
-              });
 
-              this.messageHistoryComponent.addMessage(chatId, TYPE.NOTICE, noticeMsg.message_id, noticeMsg.date);
-              
-              if (this.messageHistoryComponent.getMessageLength(chatId.toString(), TYPE.NOTICE) >= 2) {
-                const messageList: Array<MessageInfo> = this.messageHistoryComponent.popMessagesExcludeLastIndex(chatId, TYPE.NOTICE);
-                messageList.forEach(async elem => {
-                  await this.telegramBot.deleteMessage(chatId, elem.messageId.toString());
-                });
-              }
-            }
+          return ;
+        }
+
+        const userJoinDate: number = this.usersService.findUser(chatId, userId).date;
+        const nowTime = Math.floor(new Date().getTime() / 1000);
+        const timeLimit: number = (60 * 3);
+        const canEnterGroup = (nowTime - userJoinDate) < timeLimit ? true : false;
+
+        if (this.usersService.findUser(chatId, userId) === undefined) {
+          // Not join user
+          this.telegramBot.answerCallbackQuery(queryId, {
+            text: getAlertMessage(ALERT_NOT_JOIN, language_code),
+            show_alert: true
+          });
+        } else if (canSendMessage === undefined || canSendMessage === null || canEnterGroup === false) {
+          // Restrict user
+          this.telegramBot.answerCallbackQuery(queryId, {
+            text: getAlertMessage(ALERT_USER_CHECK, language_code),
+            show_alert: true
+          });
+        } else if (canSendMessage) {
+          // Restrict
+          this.telegramBot.answerCallbackQuery(queryId, {
+            text: getAlertMessage(ALERT_ALREADY, language_code),
+            show_alert: true
+          });
+        } else if (!canSendMessage) {
+          await this.telegramBot.restrictChatMember(chatId, userId.toString(), {
+            can_send_messages: true
+          });
+
+          if (this.restrictMessagesService.findMessage(chatId, messageId) === undefined) {
+            console.log('[RESTRICT] Message not found');
+            return ;
+          }
+          // Remove user
+          this.usersService.removeUser(chatId, userId);
+
+          const noticeInfo = getNoticeData(language_code, userName);
+          const ciPath: string = join(__dirname, '../../..', '/public/firmachain.png');
+          const noticeMessage = await this.telegramBot.sendPhoto(chatId, ciPath, {
+            caption: noticeInfo.message,
+            reply_markup: noticeInfo.query.reply_markup,
+            parse_mode: 'Markdown'
+          });
+
+          // Remove notice message
+          if (this.noticeMessagesService.getCount(chatId) >= 1) {
+            const noticePopMessage: Message = this.noticeMessagesService.popMessage(chatId);
+            this.telegramBot.deleteMessage(chatId, noticePopMessage.id.toString());
+          }
+
+          // Add notice message
+          this.noticeMessagesService.addMessage(chatId, noticeMessage.message_id);
+
+          // Remove restrict message
+          try {
+            this.restrictMessagesService.popMessage(chatId, messageId);
+            this.telegramBot.deleteMessage(chatId, messageId.toString());
+          } catch (e) {
+            console.log(`[CALLBACK] Not delete message for restrict`);
+            throw e;
           }
         }
       }
@@ -149,14 +188,33 @@ export class TelebotService implements OnModuleInit {
   }
 
   private initScheduleForDeletePermissionMsg() {
-    setInterval(() => {
-      const messages = this.messageHistoryComponent.getRemoveTimeOutPermissionMsg();
+    this.scheduling = setInterval(() => {
+      const chatList = this.restrictMessagesService.getChatList();
+      
+      chatList.forEach(elem => {
+        const chatId: number = parseInt(elem.split('.')[0]);
+        const messages: Message[] = this.restrictMessagesService.getMessages(chatId);
+        
+        messages.forEach(async elem_message => {
+          const nowTime = Math.floor(new Date().getTime() / 1000);
+          const timeLimit = (60 * 3);
+          
+          if ((nowTime - elem_message.date) > timeLimit) {
+            this.restrictMessagesService.popMessage(chatId, elem_message.id);
 
-      messages.forEach((value, key) => {
-        value.forEach(async elem => {
-          await this.telegramBot.deleteMessage(parseInt(key), elem.messageId.toString());
+            try {
+              await this.telegramBot.deleteMessage(elem, elem_message.id.toString());
+            } catch (e) {
+              console.log(`[SCHEDULING] Not delete message for restrict`);
+              throw e;
+            }
+          }
         });
       });
-    }, 10000);
+    }, 5000);
+  }
+
+  private updateTelegramBot() {
+    this.telegramBot.getUpdates()
   }
 }

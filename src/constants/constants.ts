@@ -1,6 +1,6 @@
-import { getAlert, getAlertAlreadyUser, getAlertNotJoinUser, getAlertUserCheck, getNotice, getPermission } from "src/components/localeConfig.component";
+import { getNotice, getRestrict, getAlert } from "src/components/localeConfig.component";
 
-export function getNoticeDataByLocale(language_code: string, name: string) {
+export function getNoticeData(language_code: string, name: string) {
   const locale: string = language_code === 'ko' ? language_code : "en";
   const notice = getNotice(locale);
   const message: string = notice.message.replace('XXX', `${name}`);
@@ -11,9 +11,9 @@ export function getNoticeDataByLocale(language_code: string, name: string) {
   }
 }
 
-export function getPermissionDataByLocale(language_code: string, name: string) {
+export function getRestrictData(language_code: string, name: string) {
   const locale: string = language_code === 'ko' ? language_code : "en";
-  const permission = getPermission(locale);
+  const permission = getRestrict(locale);
 
   return {
     message: `${name}${permission.message}`,
@@ -21,30 +21,9 @@ export function getPermissionDataByLocale(language_code: string, name: string) {
   }
 }
 
-export function getAlertMessageByLocale(language_code: string): string {
+export function getAlertMessage(type: string, language_code: string): string {
   const locale: string = language_code === 'ko' ? language_code : "en";
-  const alert = getAlert(locale);
-
-  return alert.message;
-}
-
-export function getNotYoursAlertMessageByLocale(language_code: string): string {
-  const locale: string = language_code === 'ko' ? language_code : "en";
-  const alert = getAlertUserCheck(locale);
-
-  return alert.message;
-}
-
-export function getAlreadyAlertMessageByLocale(language_code: string): string {
-  const locale: string = language_code === 'ko' ? language_code : "en";
-  const alert = getAlertAlreadyUser(locale);
-  
-  return alert.message;
-}
-
-export function getNotJoinMessageByLocale(language_code: string): string {
-  const locale: string = language_code === 'ko' ? language_code : "en";
-  const alert = getAlertNotJoinUser(locale);
+  const alert = getAlert(type, locale);
 
   return alert.message;
 }
