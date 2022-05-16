@@ -5,6 +5,7 @@ import { join } from 'path';
 import { getAlertMessage, getNewChatMemberRestrictOption, getNoticeData, getRestrictData } from 'src/constants/constants';
 import { ALERT_ALREADY, ALERT_NOT_JOIN, ALERT_USER_CHECK } from 'src/defines/define';
 import { Message } from 'src/dtos/message.dto';
+import { User } from 'src/dtos/user.dto';
 import { NoticeMessageService } from 'src/messages/noticeMessages.service';
 import { RestrictMessageService } from 'src/messages/restrictMessages.service';
 import { UsersService } from 'src/users/users.service';
@@ -121,18 +122,23 @@ export class TelebotService implements OnModuleInit {
           return ;
         }
 
-        const userJoinDate: number = this.usersService.findUser(chatId, userId).date;
-        const nowTime = Math.floor(new Date().getTime() / 1000);
-        const timeLimit: number = (60 * 3);
-        const canEnterGroup = (nowTime - userJoinDate) < timeLimit ? true : false;
+        const findUser:User = this.usersService.findUser(chatId, userId);
 
-        if (this.usersService.findUser(chatId, userId) === undefined) {
+        if (findUser === undefined || findUser === null) {
           // Not join user
           this.telegramBot.answerCallbackQuery(queryId, {
             text: getAlertMessage(ALERT_NOT_JOIN, language_code),
             show_alert: true
           });
-        } else if (canSendMessage === undefined || canSendMessage === null || canEnterGroup === false) {
+          return ;
+        }
+
+        const userJoinDate: number = findUser.date;
+        const nowTime = Math.floor(new Date().getTime() / 1000);
+        const timeLimit: number = (60 * 3);
+        const canEnterGroup = (nowTime - userJoinDate) < timeLimit ? true : false;
+        
+        if (canSendMessage === undefined || canSendMessage === null || canEnterGroup === false) {
           // Restrict user
           this.telegramBot.answerCallbackQuery(queryId, {
             text: getAlertMessage(ALERT_USER_CHECK, language_code),
